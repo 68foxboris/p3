@@ -7,7 +7,7 @@ from enigma import eEnv, getDesktop, eGetEnigmaDebugLvl
 from errno import ENOENT, EXDEV
 from re import compile
 from stat import S_IMODE
-from xml.etree.cElementTree import Element, ParseError, fromstring, parse
+from xml.etree.ElementTree import Element, ParseError, fromstring, parse
 
 DEFAULT_MODULE_NAME = __name__.split(".")[-1]
 

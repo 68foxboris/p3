@@ -1,5 +1,5 @@
 from errno import ENOENT
-from xml.etree.cElementTree import ParseError, parse
+from xml.etree.ElementTree import ParseError, parse
 
 from os import environ, path, symlink, unlink, walk
 from time import gmtime, localtime, strftime, time
