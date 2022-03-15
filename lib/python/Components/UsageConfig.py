@@ -8,10 +8,12 @@ from Components.NimManager import nimmanager
 from Components.Renderer.FrontpanelLed import ledPatterns, PATTERN_ON, PATTERN_OFF, PATTERN_BLINK
 from Components.ServiceList import refreshServiceList
 from Components.SystemInfo import SystemInfo
+from Tools.HardwareInfo import HardwareInfo
 from os.path import exists, islink, join as pathjoin, normpath
 import os, time, locale, skin
 from boxbranding import getDisplayType
 
+model = HardwareInfo().get_device_model()
 displaytype = getDisplayType()
 
 
