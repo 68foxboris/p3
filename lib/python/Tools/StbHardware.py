@@ -11,7 +11,7 @@ def getFPVersion():
 		if  HardwareInfo().get_device_model() in ('dm7080','dm820','dm520','dm525','dm900','dm920','dreamone','dreamtwo'):
 			ret = open("/proc/stb/fp/version", "r").read()
 		else:
-			ret = long(open("/proc/stb/fp/version", "r").read())
+			ret = int(open("/proc/stb/fp/version", "r").read())
 	except IOError:
 		try:
 			fp = open("/dev/dbox/fp0")
