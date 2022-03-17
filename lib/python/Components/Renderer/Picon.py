@@ -90,7 +90,7 @@ class PiconLocator:
 			fields[2] = '1'
 			pngname = self.findPicon('_'.join(fields))
 		if not pngname: # picon by channel name
-			name = sanitizeFilename(ServiceReference(serviceRef).getServiceName())
+			name = sanitizeFilename(ServiceReference(serviceName).getServiceName())
 			name = re.sub('[^a-z0-9]', '', name.replace('&', 'and').replace('+', 'plus').replace('*', 'star').lower())
 			if len(name) > 0:
 				pngname = self.findPicon(name)

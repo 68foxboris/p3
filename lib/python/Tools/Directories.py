@@ -5,8 +5,9 @@ from os import F_OK, R_OK, W_OK, access, chmod, listdir, makedirs, mkdir, readli
 from os.path import basename, dirname, exists, getsize, isdir, isfile, islink, join as pathjoin, normpath, splitext
 from enigma import eEnv, getDesktop, eGetEnigmaDebugLvl
 from errno import ENOENT, EXDEV
-from re import compile
+from re import compile, split
 from stat import S_IMODE
+from unicodedata import normalize
 from xml.etree.ElementTree import Element, ParseError, fromstring, parse
 
 DEFAULT_MODULE_NAME = __name__.split(".")[-1]
