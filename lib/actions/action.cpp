@@ -146,6 +146,18 @@ void eActionMap::bindTranslation(const std::string &domain, const std::string &d
 		r->second.m_translations.push_back(trans);
 }
 
+void eActionMap::unbindPythonKey(const std::string &context, int key, const std::string &action)
+{
+	for (std::multimap<std::string, ePythonKeyBinding>::iterator i(m_python_keys.begin()); i != m_python_keys.end(); ++i)
+	{
+		if (i->first == context && !strcmp(i->second.m_action.c_str(), action.c_str()) && i->second.m_key == key)
+		{
+			eDebug("[eActionMap] unbindPythonKey %d context %s action %s.", key, context.c_str(), action.c_str());
+			m_python_keys.erase(i);
+			i = m_python_keys.begin();
+		}
+	}
+}
 
 void eActionMap::bindToggle(const std::string &domain, const std::string &device, int togglekey)
 {
