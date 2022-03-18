@@ -2,11 +2,11 @@ from os import sys
 from os.path import exists
 from sys import maxsize
 from twisted.internet import threads
-from six import PY2
+from usb import busses
 
 from enigma import eActionMap, eDBoxLCD, eTimer
 
-from Components.config import ConfigNothing, ConfigSelection, ConfigSlider, ConfigSubsection, ConfigYesNo, config
+from Components.config import config, ConfigYesNo, ConfigNothing, ConfigOnOff, ConfigSelection, ConfigSlider, ConfigSubsection
 from Components.SystemInfo import SystemInfo
 from Tools.HardwareInfo import HardwareInfo
 from Screens.InfoBar import InfoBar
@@ -69,17 +69,15 @@ class IconCheckPoller:
 			fileWriteLine("/proc/stb/lcd/symbol_network", linkState)
 		elif exists("/proc/stb/lcd/symbol_network") and config.lcd.mode.value == "0":
 			fileWriteLine("/proc/stb/lcd/symbol_network", "0")
-		if PY2:
-			from usb import busses
-			USBState = 0
-			for bus in busses():
-				devices = bus.devices
-				for dev in devices:
-					if dev.deviceClass != 9 and dev.deviceClass != 2 and dev.idVendor != 3034 and dev.idVendor > 0:
-						USBState = 1
-			if exists("/proc/stb/lcd/symbol_usb"):
-				fileWriteLine("/proc/stb/lcd/symbol_usb", USBState)
-			self.timer.startLongTimer(30)
+		USBState = 0
+		for bus in busses():
+			devices = bus.devices
+			for dev in devices:
+				if dev.deviceClass != 9 and dev.deviceClass != 2 and dev.idVendor != 3034 and dev.idVendor > 0:
+					USBState = 1
+		if exists("/proc/stb/lcd/symbol_usb"):
+			fileWriteLine("/proc/stb/lcd/symbol_usb", USBState)
+		self.timer.startLongTimer(30)
 
 
 class LCD:
@@ -94,8 +92,7 @@ class LCD:
 		config.misc.standbyCounter.addNotifier(self.standbyCounterChanged, initial_call=False)
 
 	def standbyCounterChanged(self, configElement):
-		from Screens.Standby import inStandby
-		inStandby.onClose.append(self.leaveStandby)
+		Screens.Standby.inStandby.onClose.append(self.leaveStandby)
 		self.autoDimDownLCDTimer.stop()
 		self.autoDimUpLCDTimer.stop()
 		eActionMap.getInstance().unbindAction("", self.dimUpEvent)
@@ -512,7 +509,7 @@ def InitLcd():
 		]
 		config.lcd.ledblinkcontrolcolor = ConfigSelection(choices=colorsList, default="0xffffff")
 		config.lcd.ledblinkcontrolcolor.addNotifier(setLedBlinkControlColor)
-		config.lcd.ledbrightnesscontrol = ConfigSlider(default="0xff", increment=25, limits=(0, 0xff))
+		config.lcd.ledbrightnesscontrol = ConfigSlider(default=0xff, increment=25, limits=(0, 0xff))
 		config.lcd.ledbrightnesscontrol.addNotifier(setLedBrightnessControl)
 		config.lcd.ledcolorcontrolcolor = ConfigSelection(choices=colorsList, default="0xffffff")
 		config.lcd.ledcolorcontrolcolor.addNotifier(setLedColorControlColor)
