@@ -14,6 +14,10 @@ from Screens.Screen import Screen
 from Screens.Standby import inTryQuitMainloop
 from Tools.Directories import fileReadLine, fileWriteLine
 
+from boxbranding import getDisplayType
+
+model = HardwareInfo().get_device_model()
+displaytype = getDisplayType()
 
 class dummyScreen(Screen):
 	skin = """
@@ -258,6 +262,9 @@ class LCD:
 
 def leaveStandby():
 	config.lcd.bright.apply()
+	if model == "vuultimo":
+		config.lcd.ledbrightness.apply()
+		config.lcd.ledbrightnessdeepstandby.apply()
 
 
 def standbyCounterChanged(configElement):
@@ -696,7 +703,21 @@ def InitLcd():
 			config.lcd.showoutputresolution.addNotifier(setLCDshowoutputresolution)
 		else:
 			config.lcd.showoutputresolution = ConfigNothing()
-
+		if model == "vuultimo":
+			config.lcd.ledblinkingtime = ConfigSlider(default=5, increment=1, limits=(0, 15))
+			config.lcd.ledblinkingtime.addNotifier(setLEDblinkingtime)
+			config.lcd.ledbrightnessdeepstandby = ConfigSlider(default=1, increment=1, limits=(0, 15))
+			config.lcd.ledbrightnessdeepstandby.addNotifier(setLEDnormalstate)
+			config.lcd.ledbrightnessdeepstandby.addNotifier(setLEDdeepstandby)
+			config.lcd.ledbrightnessdeepstandby.apply = lambda: setLEDdeepstandby(config.lcd.ledbrightnessdeepstandby)
+			config.lcd.ledbrightnessstandby = ConfigSlider(default=1, increment=1, limits=(0, 15))
+			config.lcd.ledbrightnessstandby.addNotifier(setLEDnormalstate)
+			config.lcd.ledbrightnessstandby.apply = lambda: setLEDnormalstate(config.lcd.ledbrightnessstandby)
+			config.lcd.ledbrightness = ConfigSlider(default=3, increment=1, limits=(0, 15))
+			config.lcd.ledbrightness.addNotifier(setLEDnormalstate)
+			config.lcd.ledbrightness.apply = lambda: setLEDnormalstate(config.lcd.ledbrightness)
+			config.lcd.ledbrightness.callNotifiersOnSaveAndCancel = True
+		else:
 			def doNothing():
 				pass
 
