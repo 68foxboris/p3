@@ -263,7 +263,7 @@ CXXFLAGS="$CXXFLAGS -Wall -Wextra -Werror \
 	-Wno-error=packed -Wno-error=vla -Wno-error=clobbered -Wno-error=unused-parameter \
 	-Wno-error=unused-variable -Wno-error=sign-compare -Wno-error=reorder \
 	-Wno-error=deprecated-declarations -Wno-error=format-zero-length -Werror=float-equal \
-	$BASE_CFLAGS $ENIGMA2_CFLAGS $PTHREAD_CFLAGS $OPENMP_CFLAGS $ALSA_CFLAGS"
+	$BASE_CFLAGS $ENIGMA2_CFLAGS $PTHREAD_CFLAGS $OPENMP_CFLAGS $ALSA_CFLAGS $GLES_CFLAGS"
 
 ARFLAGS="cr"
 AC_SUBST(ARFLAGS)
