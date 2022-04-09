@@ -9,6 +9,13 @@ if [ -d /home/root ]; then
 	cd
 fi
 
+# any debuglevel passed?
+if [ -z $ENIGMA_DEBUG_LVL ]; then
+	DEBUG_LVL=3
+else
+	DEBUG_LVL=$ENIGMA_DEBUG_LVL
+fi
+
 # LC_ALL available?
 if [ -z $LC_ALL ]; then
 	export LC_ALL=en_GB.utf8
@@ -37,6 +44,7 @@ while : ; do
 	# start enigma
 	sync
 	if [ "$(grep config.crash.enabledebug /etc/enigma2/settings)" == "config.crash.enabledebug=true" ]; then
+		DEBUG_LVL='4'
 		RANDOMIZE1970=''
 		time=`date +%Y` ;
 		if [ "$time" = 1970 ]; then
@@ -47,9 +55,9 @@ while : ; do
 		if [ "$(grep config.crash.debugPath= /etc/enigma2/settings | sed 's/config.crash.debugPath=//g')" != "" -a -d "$(grep config.crash.debugPath= /etc/enigma2/settings | sed 's/config.crash.debugPath=//g')" ]; then
 			LOGFOLDER=$(grep config.crash.debugPath= /etc/enigma2/settings | sed 's/config.crash.debugPath=//g')
 		fi
-		LD_PRELOAD=$LIBS @bindir@/enigma2 --debug-no-color $VERBOSE &> ${LOGFOLDER}Enigma2-debug-$(date +%Y%m%d_%H-%M-%S)${RANDOMIZE1970}.log
+		LD_PRELOAD=$LIBS ENIGMA_DEBUG_LVL=$DEBUG_LVL @bindir@/enigma2 &> ${LOGFOLDER}Enigma2-debug-$(date +%Y%m%d_%H-%M-%S)${RANDOMIZE1970}.log
 	else
-		LD_PRELOAD=$LIBS @bindir@/enigma2 $VERBOSE
+		LD_PRELOAD=$LIBS ENIGMA_DEBUG_LVL=$DEBUG_LVL @bindir@/enigma2
 	fi
 
 
