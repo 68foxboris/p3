@@ -577,6 +577,8 @@ void eEPGCache::sectionRead(const uint8_t *data, int source, eEPGChannelData *ch
 	 */
 	bool use_transponder_chid = onid != 0x101 && onid != 0x100 && (source == SCHEDULE || (source == NOWNEXT && data[0] == 0x4E));
 
+	int onid = HILO(eit->original_network_id);
+	int tsid  = HILO(eit->transport_stream_id);
 	if (use_transponder_chid && channel)
 	{
 		eDVBChannelID chid = channel->channel->getChannelID();
@@ -2308,6 +2310,242 @@ void eEPGCache::importEvents(ePyObject serviceReferences, ePyObject list)
 	}
 }
 
+static void fill_eit_start(eit_event_struct *evt, time_t t)
+{
+	tm *time = gmtime(&t);
+
+	int l = 0;
+	int month = time->tm_mon + 1;
+	if (month == 1 || month == 2)
+		l = 1;
+	int mjd = 14956 + time->tm_mday + (int)((time->tm_year - l) * 365.25) + (int)((month + 1 + l*12) * 30.6001);
+	evt->start_time_1 = mjd >> 8;
+	evt->start_time_2 = mjd & 0xFF;
+
+	evt->start_time_3 = toBCD(time->tm_hour);
+	evt->start_time_4 = toBCD(time->tm_min);
+	evt->start_time_5 = toBCD(time->tm_sec);
+
+}
+
+static void fill_eit_duration(eit_event_struct *evt, int time)
+{
+	//time is given in second
+	//convert to hour, minutes, seconds
+	evt->duration_1 = toBCD(time / 3600);
+	evt->duration_2 = toBCD((time % 3600) / 60);
+	evt->duration_3 = toBCD((time % 3600) % 60);
+}
+
+static inline __u8 HI(int x) { return (__u8) ((x >> 8) & 0xFF); }
+static inline __u8 LO(int x) { return (__u8) (x & 0xFF); }
+#define SET_HILO(x, val) {x##_hi = ((val) >> 8); x##_lo = (val) & 0xff; }
+// convert from set of strings to DVB format (EIT)
+static __u8* createEventData(const eServiceReferenceDVB& serviceRef, long start, 
+	long duration, const char* title, const char* short_summary, 
+	const char* long_description, char event_type)
+{
+	if (!title)
+		return 0;
+	eventData *evt = 0;
+	static const int EIT_LENGTH = 4108;
+	__u8 *data = new __u8[EIT_LENGTH];
+
+	eit_t *packet = (eit_t *) data;
+	packet->table_id = 0x50;
+	packet->section_syntax_indicator = 1;
+
+	eDVBChannelID chid;
+	serviceRef.getChannelID(chid);
+
+	SET_HILO(packet->service_id, serviceRef.getServiceID().get());
+	packet->version_number = 0;	// eEPGCache::sectionRead() will dig this for the moment
+	packet->current_next_indicator = 0;
+	packet->section_number = 0;	// eEPGCache::sectionRead() will dig this for the moment
+	packet->last_section_number = 0;	// eEPGCache::sectionRead() will dig this for the moment
+	
+	SET_HILO(packet->transport_stream_id, chid.transport_stream_id.get());
+	SET_HILO(packet->original_network_id, chid.original_network_id.get());
+	packet->segment_last_section_number = 0; // eEPGCache::sectionRead() will dig this for the moment
+	packet->segment_last_table_id = 0x50;
+
+	eit_event_t *evt_struct = (eit_event_t*) (data + EIT_SIZE);
+
+	__u16 eventId = start & 0xFFFF;
+	SET_HILO(evt_struct->event_id, eventId);
+
+	//6 bytes start time, 3 bytes duration
+	fill_eit_start(evt_struct, start);
+	fill_eit_duration(evt_struct, duration);
+	
+	evt_struct->running_status = 0;
+	evt_struct->free_CA_mode = 0;
+
+	//no support for different code pages, only DVB's latin1 character set
+	//TODO: convert text to correct character set (data is probably passed in as UTF-8)
+	__u8 *x = (__u8 *) evt_struct;
+	x += EIT_LOOP_SIZE;
+	int nameLength = strnlen(title, 248);
+	int descLength = short_summary ? strnlen(short_summary, 248 - nameLength) : 0;
+	
+	eit_short_event_descriptor_struct *short_evt = (eit_short_event_descriptor_struct*) x;
+	short_evt->descriptor_tag = SHORT_EVENT_DESCRIPTOR;
+	short_evt->descriptor_length = EIT_SHORT_EVENT_DESCRIPTOR_SIZE + nameLength + descLength + 1 - 2; //+1 for length of short description, -2 for tag and length 
+	short_evt->language_code_1 = 'e';
+	short_evt->language_code_2 = 'n';
+	short_evt->language_code_3 = 'g';
+	short_evt->event_name_length = nameLength;
+	x = (__u8 *) short_evt;
+	x += EIT_SHORT_EVENT_DESCRIPTOR_SIZE;
+	memcpy(x, title, nameLength);
+	x += nameLength;
+	*x = descLength;
+	x += 1;
+	if (descLength) //not sure if memcpy can handle length of zero....
+	{
+		memcpy(x, short_summary, descLength);
+		x += descLength;
+	}
+
+	//Content type
+	if (event_type != 0)
+	{
+		x[0] = 0x54;
+		x[1] = 2;
+		x[2] = event_type;
+		x[3] = 0;
+		x += 4;
+	}
+
+	//Long description
+	int currentLoopLength = x - (__u8*)short_evt;
+	int overheadPerDescriptor = 8; //increase if codepages are added!!!
+	int MAX_LEN = 256 - overheadPerDescriptor; 
+
+	int textLength = long_description ? strnlen(long_description, EIT_LENGTH) : 0;//EIT_LENGTH is a bit too much, but it's only here as a reasonable end point
+	int lastDescriptorNumber = (textLength + MAX_LEN-1) / MAX_LEN - 1;
+	int remainingTextLength = textLength - lastDescriptorNumber * MAX_LEN;
+
+	//if long description is too long, just try to fill as many descriptors as possible
+	while ( (lastDescriptorNumber+1) * 256 + currentLoopLength > EIT_LENGTH - EIT_LOOP_SIZE)
+	{
+		lastDescriptorNumber--;
+		remainingTextLength = MAX_LEN;
+	}
+
+	for (int descrIndex = 0; descrIndex <= lastDescriptorNumber; ++descrIndex)
+	{
+		eit_extended_descriptor_struct *ext_evt = (eit_extended_descriptor_struct*) x;
+		ext_evt->descriptor_tag = EIT_EXTENDED_EVENT_DESCRIPOR;
+		//descriptor header length is 6, including the 2 tag and length bytes
+		//so the length field must be: stringlength + 1 (2 4-bits numbers) + 3 (lang code) + 2 bytes for item info length field and text length field
+		int currentTextLength = descrIndex < lastDescriptorNumber ? MAX_LEN : remainingTextLength;
+		ext_evt->descriptor_length = 6 + currentTextLength;
+
+		ext_evt->descriptor_number = descrIndex;
+		ext_evt->last_descriptor_number = lastDescriptorNumber;
+		ext_evt->iso_639_2_language_code_1 = 'e';
+		ext_evt->iso_639_2_language_code_2 = 'n';
+		ext_evt->iso_639_2_language_code_3 = 'g';
+
+		x[6] = 0; //item information (car, year, director, etc. Unsupported for now)
+		x[7] = currentTextLength; //length of description string (part in this message)
+		memcpy(x + 8, &long_description[descrIndex*MAX_LEN], currentTextLength);
+
+		x += 2 + ext_evt->descriptor_length; 
+	}
+
+	//TODO: add age and more 
+	int desc_loop_length = x - ((__u8*)evt_struct + EIT_LOOP_SIZE);
+	SET_HILO(evt_struct->descriptors_loop_length, desc_loop_length);
+
+	int packet_length = (x - data) - 3; //should add 1 for crc....
+	SET_HILO(packet->section_length, packet_length);
+	return data;
+}
+#undef SET_HILO
+
+static const char* getStringFromPython(ePyObject obj)
+{
+	char *result = 0;
+	if (PyString_Check(obj))
+	{
+		result = PyString_AS_STRING(obj);
+	}
+	return result;
+}
+//here we get a python tuple of tuples ;)
+// consider it an array of objects with the following data
+// 1. start time (long)
+// 2. duration (int)
+// 3. event title (string)
+// 4. short description (string)
+// 5. extended description (string)
+// 6. event type (byte)
+void eEPGCache::importEvent(ePyObject serviceReference, ePyObject list)
+{
+	if (!PyString_Check(serviceReference))
+	{
+		eDebug("[EPG:import] serviceReference does not pass PyString_Check, aborting");
+		return;
+	}
+
+	char *refstr = PyString_AS_STRING(serviceReference);
+	if (!refstr)
+	{
+		eDebug("[EPG:import] serviceReference string is 0, aborting");
+		return;
+	}
+	eServiceReferenceDVB ref(refstr);
+	if (!ref.valid())
+	{
+		std::string s("[EPG:import] invalid reference: ");
+		s += refstr;
+		s += ", aborting";
+		eDebug(s.c_str());
+		return;
+	}
+	if (!PyTuple_Check(list))
+	{
+		eDebug("[EPG:import] argument 'list' does not pas PyTuple_Check, aborting");
+		return;
+	}
+
+	int numberOfEvents = PyTuple_Size(list);
+	if (numberOfEvents < 1)
+	{
+		eDebug("[EPG:import] numberOfEvents less than 1, aborting");
+		return;
+	}
+	
+	for (int i = 0; i < numberOfEvents;  ++i)
+	{
+		ePyObject singleEvent = PyTuple_GET_ITEM(list, i);
+		if (!PyTuple_Check(singleEvent))
+		{
+			eDebug("[EPG:import] eventdata tuple does not pass PyTuple_Check, aborting");
+		return;
+			}
+		int tupleSize = PyTuple_Size(singleEvent);
+		if (tupleSize < 5)
+		{
+			eDebug("[EPG:import] eventdata tuple does not contain enough fields, aborting");
+			return;
+		}
+		
+		long start = PyLong_AsLong(PyTuple_GET_ITEM(singleEvent, 0));
+		long duration = PyInt_AsLong(PyTuple_GET_ITEM(singleEvent, 1));
+		const char *title = getStringFromPython(PyTuple_GET_ITEM(singleEvent, 2));
+		const char *short_summary = getStringFromPython(PyTuple_GET_ITEM(singleEvent, 3));
+		const char *long_description = getStringFromPython(PyTuple_GET_ITEM(singleEvent, 4));
+		char event_type = (char) PyInt_AsLong(PyTuple_GET_ITEM(singleEvent, 5));
+
+		__u8* data = createEventData(ref, start, duration, title, short_summary, long_description, event_type);
+		if (data)
+			sectionRead(data, EPG_IMPORT, 0);
+		delete [] data;
+	}
+}
 
 // here we get a python tuple
 // the first entry in the tuple is a python string to specify the format of the returned tuples (in a list)
