@@ -61,6 +61,9 @@
 #include "utils/log.h"
 #include "video/Bookmark.h"
 #include "video/VideoInfoTag.h"
+#ifdef TARGET_STB
+#include "cores/DvbPlayer/DvbPlayerVideo.h"
+#endif
 #include "windowing/GraphicContext.h"
 #include "windowing/WinSystem.h"
 
@@ -599,12 +602,25 @@ void CVideoPlayer::CreatePlayers()
 {
   if (m_players_created)
     return;
+    
+#ifdef TARGET_STB
+  if(m_stbplayer_mode && m_use_stbcodec)
+  {
+          m_VideoPlayerVideo = new CDvbPlayerVideo(&m_clock, &m_overlayContainer, m_messenger, m_renderManager, *m_processInfo, m_messageQueueTimeSize);
+          m_VideoPlayerAudio = new CVideoPlayerAudio(&m_clock, m_messenger, *m_processInfo, m_messageQueueTimeSize);
+  }else
+  {
+        m_VideoPlayerVideo = new CVideoPlayerVideo(&m_clock, &m_overlayContainer, m_messenger, m_renderManager, *m_processInfo, m_messageQueueTimeSize);
+        m_VideoPlayerAudio = new CVideoPlayerAudio(&m_clock, m_messenger, *m_processInfo, m_messageQueueTimeSize);
+  }
+#else
 
   m_VideoPlayerVideo =
       new CVideoPlayerVideo(&m_clock, &m_overlayContainer, m_messenger, m_renderManager,
                             *m_processInfo, m_messageQueueTimeSize);
   m_VideoPlayerAudio =
       new CVideoPlayerAudio(&m_clock, m_messenger, *m_processInfo, m_messageQueueTimeSize);
+#endif
   m_VideoPlayerSubtitle = new CVideoPlayerSubtitle(&m_overlayContainer, *m_processInfo);
   m_VideoPlayerTeletext = new CDVDTeletextData(*m_processInfo);
   m_VideoPlayerRadioRDS = new CDVDRadioRDSData(*m_processInfo);
@@ -662,6 +678,13 @@ CVideoPlayer::CVideoPlayer(IPlayerCallback& callback)
       CSettings::SETTING_VIDEOPLAYER_QUEUETIMESIZE);
 
   m_messageQueueTimeSize = static_cast<double>(tenthsSeconds) / 10.0;
+
+#ifdef TARGET_STB
+  m_stbplayer_mode		= CServiceBroker::GetSettingsComponent()->GetSettings()->GetBool(CSettings::SETTING_VIDEOPLAYER_USESTBPLAYER);
+  m_use_stbcodec			= m_stbplayer_mode;
+#else
+  m_stbplayer_mode		= false;
+#endif
 
   m_SkipCommercials = true;
 
@@ -5011,7 +5034,9 @@ void CVideoPlayer::UpdatePlayState(double timeout)
   }
   else
   {
-    state.canseek = true;
+    if(m_stbplayer_mode && m_use_stbcodec)
+        state.canseek = false ;
+    else state.canseek = true;
     state.canpause = true;
   }
 
