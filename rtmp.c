@@ -29,6 +29,7 @@
 #include <assert.h>
 #include <time.h>
 #include <limits.h>
+#include <math.h>
 
 #include "rtmp_sys.h"
 #include "log.h"
